@@ -1,0 +1,7 @@
+# Added automatically by ‘eldev init’.
+/.eldev
+/Eldev-local
+/dist
+*.elc
+
+

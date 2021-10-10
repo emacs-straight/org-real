@@ -1,0 +1,124 @@
+; -*- mode: emacs-lisp; lexical-binding: t -*-
+
+(setq eldev-standard-excludes '(".*" "/dist/" "/deps/"))
+
+(eldev-use-local-dependency "deps/boxy" 'packaged)
+
+(eldev-defcommand
+ org_real-md5 (&rest _)
+ "Create md5 checksum of .tar and .el files in dist folder."
+ (mapc
+  (lambda (file)
+    (write-region
+     (secure-hash 'md5 file)
+     nil
+     (concat (file-name-sans-extension file) ".md5")))
+  (append
+   (directory-files eldev-dist-dir t "\\.tar\\'")
+   (directory-files eldev-dist-dir t "\\.el\\'"))))
+
+(eldev-defcommand
+ org_real-test (&rest _)
+ "Runs tests against all org files in tests folder."
+ :override t
+ (eldev-load-project-dependencies)
+ (require 'org-real)
+ (let ((failures 0))
+   (cl-flet* ((get-expected ()
+                            (save-excursion
+                              (re-search-forward "#\\+begin_example")
+                              (org-element-property :value (org-element-at-point))))
+              (get-actual ()
+                          (with-current-buffer (get-buffer "*Boxy*")
+                            (buffer-string)))
+              (print-result (title result)
+                            (message "    %s : %s"
+                                     (if result
+                                         "\033[0;32mPASS\033[0m"
+                                       "\033[0;31mFAIL\033[0m")
+                                     title)
+                            (if (not result)
+                                (let ((expected (get-expected)))
+                                  (save-window-excursion
+                                    (with-temp-buffer
+                                      (insert expected)
+                                      (diff-buffers (get-buffer "*Boxy*")
+                                                    (current-buffer)
+                                                    nil t))
+                                    (with-current-buffer (get-buffer "*Diff*")
+                                      (message "@@ -actual +expected @@")
+                                      (message
+                                       (string-join
+                                        (butlast
+                                         (butlast
+                                          (cdddr
+                                           (split-string
+                                            (buffer-string)
+                                            "\n"))))
+                                          "\n")))))))
+              (set-result (result)
+                          (if (not result) (cl-incf failures))
+                          (let ((inhibit-message t))
+                            (org-todo (if result "PASS" "FAIL")))))
+     (mapc
+      (lambda (test)
+        (with-temp-file test
+          (message "\n%s:\n" (file-name-base test))
+          (insert-file-contents test)
+          (org-mode)
+
+          (message "  Opening links:\n")
+          (org-element-map (org-element-parse-buffer) 'link
+            (lambda (link)
+              (goto-char (org-element-property :begin link))
+              (let* ((title (and (org-in-regexp org-link-bracket-re)
+                                 (match-string 2)))
+                     (org-real-margin-y (if (org-entry-get nil "MARGIN-Y" t)
+                                            (string-to-number (org-entry-get nil "MARGIN-Y" t))
+                                          org-real-margin-y))
+                     (org-real-margin-x (if (org-entry-get nil "MARGIN-X" t)
+                                            (string-to-number (org-entry-get nil "MARGIN-X" t))
+                                          org-real-margin-x))
+                     (org-real-padding-y (if (org-entry-get nil "PADDING-Y" t)
+                                             (string-to-number (org-entry-get nil "PADDING-Y" t))
+                                           org-real-padding-y))
+                     (org-real-padding-x (if (org-entry-get nil "PADDING-X" t)
+                                             (string-to-number (org-entry-get nil "PADDING-X" t))
+                                           org-real-padding-x))
+                     (result (catch 'result
+                               (save-window-excursion
+                                 (condition-case nil
+                                     (org-open-at-point)
+                                   (error (throw 'result nil))))
+                               (string= (get-expected) (get-actual)))))
+                (print-result title result)
+                (set-result result))))
+
+          (message "\n  Merging links:\n")
+          (org-babel-map-src-blocks nil
+            (goto-char beg-block)
+            (let* ((title (org-entry-get nil "ITEM"))
+                   (org-real-margin-y (if (org-entry-get nil "MARGIN-Y")
+                                          (string-to-number (org-entry-get nil "MARGIN-Y" t))
+                                        org-real-margin-y))
+                   (org-real-margin-x (if (org-entry-get nil "MARGIN-X" t)
+                                          (string-to-number (org-entry-get nil "MARGIN-X" t))
+                                        org-real-margin-x))
+                   (org-real-padding-y (if (org-entry-get nil "PADDING-Y" t)
+                                           (string-to-number (org-entry-get nil "PADDING-Y" t))
+                                         org-real-padding-y))
+                   (org-real-padding-x (if (org-entry-get nil "PADDING-X" t)
+                                           (string-to-number (org-entry-get nil "PADDING-X" t))
+                                         org-real-padding-x))
+                   (result (catch 'result
+                             (save-window-excursion
+                               (condition-case nil
+                                   (progn
+                                     (org-edit-special)
+                                     (org-real-world))
+                                 (error (throw 'result nil))))
+                             (string= (get-expected) (get-actual)))))
+              (print-result title result)
+              (set-result result)))))
+      (directory-files "tests" t "\\.org\\'"))
+   (and (> failures 0) (error "Test run had failures")))))

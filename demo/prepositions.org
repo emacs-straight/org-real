@@ -1,0 +1,8 @@
+- [[real:///in?rel=in][in]]
+- [[real:///on?rel=on][on]]
+- [[real:///behind?rel=behind][behind]]
+- [[real:///in front?rel=in front of][in front]]
+- [[real:///right?rel=to the right of][right]]
+- [[real:///above?rel=above][above]]
+- [[real:///below?rel=below][below]]
+- [[real:///left?rel=to the left of][left]]
